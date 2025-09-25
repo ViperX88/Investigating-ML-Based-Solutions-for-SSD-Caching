@@ -1,1 +1,10 @@
-
+cmake_minimum_required(VERSION 3.10) 
+project(trace_replay) 
+set(CMAKE_CXX_STANDARD 17) 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../CacheLib/cachelib/cmake") 
+set(CMAKE_PREFIX_PATH "/proj/cac101-PG0/CacheLib/opt/cachelib/" ${CMAKE_PREFIX_PATH}) 
+find_package(cachelib REQUIRED) 
+find_package(Sodium REQUIRED) 
+add_executable(trace_replay trace_replay.cpp) 
+target_link_libraries(trace_replay PRIVATE cachelib ${sodium_LIBRARY} ) 
+target_include_directories(trace_replay PRIVATE ${sodium_INCLUDE_DIR})
