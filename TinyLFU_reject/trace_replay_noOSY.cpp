@@ -1,4 +1,3 @@
-
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -19,6 +18,7 @@
 #include <unordered_set>
 #include <vector>
 #include <cstdlib>
+#include <algorithm>
 
 #include <folly/init/Init.h>
 #include "cachelib/allocator/CacheAllocator.h"
@@ -27,16 +27,14 @@
 
 using Cache = facebook::cachelib::CacheAllocator<facebook::cachelib::TinyLFUCacheTrait>;  
 
-//paths, change accordingly
 constexpr const char* kTracePath   = "/proj/cac101-PG0/trace.csv";
 constexpr const char* kOriginPath  = "/mnt/origin/origin.bin";
 constexpr const char* kNvmFile     = "/mnt/cache-ssd/nvm.dat";
 constexpr const char* kPersistBase = "/proj/cac101-PG0/cachelib_state";
 
-
-constexpr uint64_t kDramMB    = 128;                              // 1 GiB DRAM
-constexpr uint64_t kNvmBytes  = 100ULL * 1024 * 1024 * 1024;       // 100 GiB NVM
-constexpr size_t   kBlockSize = 4096;                              // 4 KiB blocks
+constexpr uint64_t kDramMB    = 128;
+constexpr uint64_t kNvmBytes  = 100ULL * 1024 * 1024 * 1024;
+constexpr size_t   kBlockSize = 4096;
 constexpr size_t   kAlign     = 4096;
 
 inline bool isAligned(uint64_t off, size_t sz) { return (off % kAlign == 0) && (sz % kAlign == 0); }
@@ -45,6 +43,14 @@ inline void ensureDir(const char* dir) {
   if (::mkdir(dir, 0755) != 0 && errno != EEXIST) {
     throw std::runtime_error(std::strerror(errno));
   }
+}
+
+inline void ensureParentDirForFile(const char* filePath) {
+  std::string p(filePath);
+  auto slash = p.find_last_of('/');
+  if (slash == std::string::npos) return;
+  std::string dir = p.substr(0, slash);
+  if (!dir.empty()) ensureDir(dir.c_str());
 }
 
 inline void ensureRegularFileExact(const char* path, uint64_t bytes) {
@@ -65,7 +71,25 @@ inline void logFsType(const char* dir) {
   }
 }
 
-// trace structure
+inline uint64_t getFileSize(const char* path) {
+  struct stat st{}; if (::stat(path, &st) == 0) return static_cast<uint64_t>(st.st_size);
+  return 0;
+}
+
+inline void ensureRegularFileSizedAtLeast(const char* path, uint64_t bytes) {
+  ensureParentDirForFile(path);
+  int fd = ::open(path, O_RDWR | O_CREAT, 0644);
+  if (fd < 0) throw std::runtime_error(std::strerror(errno));
+  uint64_t cur = getFileSize(path);
+  if (cur < bytes) {
+    if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+      int e = errno; ::close(fd);
+      throw std::runtime_error(std::strerror(e));
+    }
+  }
+  ::close(fd);
+}
+
 struct TraceEntry { std::string op; uint64_t offset; uint32_t size; };
 std::vector<TraceEntry> loadTrace(const std::string& filename, uint64_t& originNeededBytes) {
   std::vector<TraceEntry> trace;
@@ -153,7 +177,6 @@ ssize_t direct_write_block(const OriginFDs& fds, const void* src, size_t sz, uin
   return w;
 }
 
-//payload function
 static int  g_payload_fd = -1;
 static bool g_have_payload = false;
 void openPayloadIfAny() {
@@ -193,7 +216,6 @@ inline bool consumeDirtyIfPresent(const std::string& key) {
   return true;
 }
 
-// Cache
 void initializeCacheWithWriteBack() {
   Cache::Config config;
 
@@ -218,7 +240,6 @@ void initializeCacheWithWriteBack() {
   Cache::NvmCacheConfig nvmConfig;
   nvmConfig.navyConfig.setSimpleFile(kNvmFile, kNvmBytes, /*useDirectIO*/ true);
   config.enableNvmCache(nvmConfig);
-
 
   config.setNvmCacheAdmissionPolicy(
   std::make_shared<
@@ -254,7 +275,6 @@ void initializeCacheWithWriteBack() {
 
 }
 
-// run
 void processEntry(const TraceEntry& e) {
   std::vector<char> blkBuf(kBlockSize);
   std::vector<char> tmpWriteBuf;
@@ -297,7 +317,7 @@ void processEntry(const TraceEntry& e) {
       const uint64_t wStart = std::max<uint64_t>(blockOff, e.offset);
       const uint64_t wEnd   = std::min<uint64_t>(blockOff + kBlockSize, e.offset + e.size);
       if (wEnd <= wStart) {
-        continue; //done
+        continue;
       }
       const size_t len      = static_cast<size_t>(wEnd - wStart);
       const size_t offInBlk = static_cast<size_t>(wStart - blockOff);
@@ -341,37 +361,34 @@ int main(int argc, char** argv) {
   folly::Init init(&argc, &argv);
   try {
 
-    //SSD writes
     std::cout << "[SMART] Logical Sectors Written (before):\n";
     int smart_rc = std::system("sudo smartctl -x /dev/sdc | grep \"Logical Sectors Written\"");
 
-    //load trace
     uint64_t originNeedBytes = 0;
     auto trace = loadTrace(kTracePath, originNeedBytes);
     std::cout << "Trace entries: " << trace.size() << "\n";
 
-    //open
+    ensureParentDirForFile(kOriginPath);
+    ensureRegularFileSizedAtLeast(kOriginPath, originNeedBytes ? originNeedBytes : kBlockSize);
+
     g_origin = openOrigin(kOriginPath);
     openPayloadIfAny();
 
-    //cache init
     initializeCacheWithWriteBack();
 
     const auto t0 = std::chrono::high_resolution_clock::now();
 
-    //replay
     for (const auto& e : trace) {
       processEntry(e);
     }
 
-    //no waiting for flush - takes too long
     const auto t1 = std::chrono::high_resolution_clock::now();
     const double seconds = std::chrono::duration<double>(t1 - t0).count();
 
     {
     int mnt = ::open("/mnt/cache-ssd", O_RDONLY | O_DIRECTORY);
     if (mnt >= 0) { ::syncfs(mnt); ::close(mnt); }
-    else { ::sync(); } // fallback if mount open fails
+    else { ::sync(); }
     }
 
     auto mb = [](size_t b){ return b / 1024.0 / 1024.0; };
