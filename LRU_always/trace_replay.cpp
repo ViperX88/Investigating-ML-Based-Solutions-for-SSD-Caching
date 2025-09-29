@@ -90,6 +90,45 @@ inline void ensureRegularFileSizedAtLeast(const char* path, uint64_t bytes) {
   ::close(fd);
 }
 
+// --- Disk-head time (DT) tracking ---
+static double g_seekCostSec = []{
+  if (const char* s = std::getenv("BALEEN_SEEK_COST_MS")) {
+    try { return std::stod(s) / 1000.0; } catch (...) {}
+  }
+  return 0.005; // default 5 ms per I/O
+}();
+
+static double g_byteCostSec = []{
+  if (const char* s = std::getenv("BALEEN_BYTE_COST_NS")) {
+    try { return std::stod(s) * 1e-9; } catch (...) {}
+  }
+  return 5e-9;  // default ~200 MB/s => 5 ns/byte
+}();
+
+static double g_dtWindowSec = []{
+  if (const char* s = std::getenv("BALEEN_DT_WINDOW_SEC")) {
+    try { return std::stod(s); } catch (...) {}
+  }
+  return 600.0; // 10 minutes
+}();
+
+static std::chrono::steady_clock::time_point g_runStart;
+static std::vector<double> g_dtWindows;
+
+inline void initDT() {
+  g_runStart = std::chrono::steady_clock::now();
+  g_dtWindows.clear();
+}
+inline void accountDT(size_t bytes) {
+  const double dt = g_seekCostSec + g_byteCostSec * static_cast<double>(bytes);
+  const double elapsed = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - g_runStart).count();
+  const size_t idx = static_cast<size_t>(elapsed / g_dtWindowSec);
+  if (idx >= g_dtWindows.size()) g_dtWindows.resize(idx + 1, 0.0);
+  g_dtWindows[idx] += dt;
+}
+
+
 struct TraceEntry { std::string op; uint64_t offset; uint32_t size; };
 std::vector<TraceEntry> loadTrace(const std::string& filename, uint64_t& originNeededBytes) {
   std::vector<TraceEntry> trace;
@@ -255,7 +294,10 @@ void initializeCacheWithWriteBack() {
     const void* src = data.item.getMemory();
     ssize_t w = direct_write_block(g_origin, src, kBlockSize, blockOff);
     if (w < 0) std::cerr << "pwrite failed " << std::strerror(errno) << "\n";
-    else total.writeBackBytes += static_cast<size_t>(w);
+    else {
+      total.writeBackBytes += static_cast<size_t>(w);
+      accountDT(static_cast<size_t>(w));
+    }
   };
   config.setItemDestructor(itemDestructor);
 
@@ -327,6 +369,7 @@ void processEntry(const TraceEntry& e) {
             total.deviceReadBytes += static_cast<size_t>(got);
             if (static_cast<size_t>(got) < kBlockSize) {
               std::memset(static_cast<char*>(h->getMemory()) + got, 0, kBlockSize - static_cast<size_t>(got));
+              accountDT(static_cast<size_t>(got)); 
             }
           }
         }
@@ -365,6 +408,7 @@ int main(int argc, char** argv) {
     openPayloadIfAny();
 
     initializeCacheWithWriteBack();
+    initDT();
 
     const auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -392,6 +436,11 @@ int main(int argc, char** argv) {
     std::cout << "Time:    " << (seconds * 1000.0) << " ms\n";
     std::cout << "IOPS W:  " << iops(total.writes) << "\n";
     std::cout << "IOPS R:  " << iops(total.reads)  << "\n";
+    double peakDT = 0.0, sumDT = 0.0;
+    for (double wdt : g_dtWindows) { if (wdt > peakDT) peakDT = wdt; sumDT += wdt; }
+    std::cout << "DT windows:            " << g_dtWindows.size() << "\n";
+    std::cout << "Peak DT (max window):  " << peakDT << " s\n";
+
 
     closePayloadIfAny();
     closeOrigin(g_origin);
@@ -403,3 +452,4 @@ int main(int argc, char** argv) {
     return 1;
   }
 }
+
