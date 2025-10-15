@@ -9,7 +9,7 @@ chmod +x install.sh
 
 Tip: If you wish to change the setup, look into the script and change it accordingly, for example for the space allocated for the cache.
 
-
+The current trace.csv is a small trace upon which you can run test results. However, to reproduce the results from the paper, please download the according traces from this source: http://dsn.ce.sharif.edu/ftp/IO/Data-Center/.
 Through this approach you can install the basic Cachelib and run the basic Cachelib experiments.
 
 To run an experiement using a specific algorithm (e.g: LRU_always) , do this:
