@@ -14,12 +14,12 @@ Through this approach you can install the basic Cachelib and run the basic Cache
 
 To run an experiement using a specific algorithm (e.g: LRU_always) , do this:
 
-cd LRU_always
-mkdir -p build && cd build
-cmake ..
-make -j
-./trace_replay
-
+cd LRU_always  
+mkdir -p build && cd build   
+cmake ..   
+make -j   
+./trace_replay    
+  
 
 
 To run MAT:
