@@ -1,7 +1,11 @@
 python3 -m pip install --user lightgbm pandas pyyaml numpy
-cd MAT_always/build
-unset MAT_ML_CONFIG
-export MAT_TRAIN_MODE=1
+git clone https://github.com/yangdsh/CacheLib_2023  
+cd CacheLib_2023  
+./contrib/build.sh  
+cd ..  
+cd MAT_always/build  
+unset MAT_ML_CONFIG  
+export MAT_TRAIN_MODE=1  
 export MAT_TRAIN_OUT=/proj/cac101-PG0/mat_train.csv
 ./trace_replay
 
