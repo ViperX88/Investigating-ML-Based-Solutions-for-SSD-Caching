@@ -523,7 +523,7 @@ int main(int argc, char** argv) {
     auto iops = [seconds](size_t ops){ return seconds > 0 ? (ops / seconds) : 0.0; };
 
     const double reqPerSec = seconds > 0 ? (double)(total.reads + total.writes) / seconds : 0.0;
-    const double byteMissRatio = (total.readBytes > 0) ? (100.0 * (double)total.missBytes / (double)total.readBytes) : 0.0;
+    const double MissRatio = (total.readBytes > 0) ? (100.0 * (double)total.missBytes / (double)total.readBytes) : 0.0;
 
     const double build_ms   = total.featBuildNs   / 1e6;
     const double refresh_ms = total.featRefreshNs / 1e6;
@@ -535,8 +535,7 @@ int main(int argc, char** argv) {
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "Writes:  " << total.writes << " (" << total.writeBytes << " bytes)\n";
     std::cout << "Reads:   " << total.reads  << " (" << total.readBytes  << " bytes)\n";
-    std::cout << "Misses:  " << total.misses << "  (miss rate "
-              << (total.reads ? (100.0 * total.misses / total.reads) : 0.0) << "%)\n";
+    std::cout << "Misses:  " << MissRatio << "%\n";
     std::cout << "Time:    " << (seconds * 1000.0) << " ms\n";
     std::cout << "IOPS W:  " << iops(total.writes) << "\n";
     std::cout << "IOPS R:  " << iops(total.reads)  << "\n";
