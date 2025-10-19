@@ -157,9 +157,10 @@ Daniel Lin-Kit Wong, Hao Wu, Carson Molder, Sathya Gunasekar, Jimmy Lu, Snehal K
 Zhen Yang, Sudarsun Kannan, Arjun Kashyap, et al.  
 *arXiv 2023*
 
-[**CacheLib / Navy**](https://github.com/facebook/CacheLib)  
-Meta Open Source  
-*Project repository*
+[**The CacheLib Caching Engine: Design and Experiences at Scale**](https://www.usenix.org/system/files/osdi20-berg.pdf)  
+Benjamin Berg, Daniel S. Berger, Sara McAllister, Isaac Grosof, Sathya Gunasekar, Jimmy Lu, Michael Uhlar, Jim Carrig, Nathan Beckmann, Mor Harchol-Balter, Gregory R. Ganger  
+*USENIX OSDI 2020*
+
 
 [**TinyLFU: A Highly Efficient Cache Admission Policy**](https://arxiv.org/pdf/1512.00727)  
 Gil Einziger, Roy Friedman, Ben Manes  
