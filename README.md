@@ -23,7 +23,13 @@ make -j
 
 
 To run MAT:
-COMING
+cd MAT_always  
+mkdir build  
+cd build  
+cmake ..  
+make -j  
+
+Now MAT is ready, and you can simply run the script: MAT.sh to get results.
 
 
 To run Baleen:
